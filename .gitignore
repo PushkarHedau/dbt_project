@@ -11,7 +11,7 @@ venv/
 .ruff_cache/
 
 # dbt
- target/
+target/
 dbt_packages/
 logs/
 .DS_Store
