@@ -1,0 +1,10 @@
+version: 2
+
+# Add source declarations after confirming the real warehouse database/schema/table names.
+# Example:
+# sources:
+#   - name: raw_example
+#     database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+#     schema: RAW
+#     tables:
+#       - name: example_table
