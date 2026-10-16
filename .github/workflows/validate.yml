@@ -1,0 +1,21 @@
+name: Validate project structure
+
+on:
+  pull_request:
+  push:
+    branches: [master, develop, main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile DAG Python files
+        run: python -m compileall -q dags
+      - name: Validate dbt configuration files
+        run: test -f dbt/dbt_project.yml && test -f dbt/models/sources.yml
+      - name: Ensure local profile is not committed
+        run: test ! -f dbt/profiles.yml
