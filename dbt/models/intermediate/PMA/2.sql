@@ -1,4 +1,4 @@
-CREATE OR REPLACE VIEW FIN_CON_SBX.INT_PORTFOLIO_SIMPLIFICATION.INT_PORTFOLIO_SKU_SIMPLIFICATION AS 
+-- CREATE OR REPLACE VIEW FIN_CON_SBX.INT_PORTFOLIO_SIMPLIFICATION.INT_PORTFOLIO_SKU_SIMPLIFICATION AS 
 with std_cost_agg as (
     select
         plant,
@@ -39,6 +39,7 @@ with std_cost_agg as (
         to_char(costing_date, 'yyyymm'),
         currency
 ),
+-- select * from std_cost_agg;,
 std_cost_qtr as (
     select
         std_material,
@@ -57,6 +58,7 @@ std_cost_qtr as (
         std_cost_currency,
         left(costing_month, 4) || 'Q' || to_varchar(ceil(right(costing_month, 2)::number / 3))
 ),
+-- select * from std_cost_qtr;,,
 currency_conversion as (
     select
         upper(trim(from_currency)) as from_currency,
@@ -81,7 +83,8 @@ currency_conversion as (
 ),
 finance_step_1 as (
     select
-        m.*,
+        m.* exclude(sales_organization),
+        m.sales_organization as sc_sales_organization,
         sc.* exclude (
             std_material,
             plant,
@@ -96,7 +99,9 @@ finance_step_1 as (
         end as conversion_rate
     from
         SC_CON_SBX.PORTFOLIO_SIMPLIFICATION.RPT_SC_PORTFOLIO as m
-        left join std_cost_qtr as sc on m.cos_vol_material_id = sc.std_material
+        left join std_cost_qtr as sc 
+        
+        on m.cos_vol_material_id = sc.std_material
         and m.cos_vol_plant = sc.plant
         and sc.costing_quarter = greatest(
             '2026Q3',
@@ -129,6 +134,7 @@ finance_step_1 as (
     where
         m.cos_vol_posting_month >= '202501'
 ),
+-- select * from finance_step_1;,,,
 customer_data as (
     select
         distinct c.name as customer_name,
@@ -342,6 +348,7 @@ pnl as (
             end
         ) != 0
 ),
+-- select * from pnl;,,,
 plant_units as (
     select
         cos_vol_material_id as material_id,
@@ -364,30 +371,30 @@ plant_share as (
         material_id,
         plant,
         posting_month,
-        sales_organization as sc_sales_organization,
+        sc_sales_organization,
         plant_units,
         sum(plant_units) over (
             partition by material_id,
-            sales_organization,
+            sc_sales_organization,
             posting_month
         ) as sku_units,
         count(*) over (
             partition by material_id,
-            sales_organization,
+            sc_sales_organization,
             posting_month
         ) as n_plants,
         coalesce(
             plant_units::float / nullif(
                 sum(plant_units) over (
                     partition by material_id,
-                    sales_organization,
+                    sc_sales_organization,
                     posting_month
                 ),
                 0
             )::float,
             1.0::float / count(*) over (
                 partition by material_id,
-                sales_organization,
+                sc_sales_organization,
                 posting_month
             )
         ) as plant_share
@@ -396,12 +403,14 @@ plant_share as (
 ),
 finance_step_2 as (
     select
-        sc.*,
+        sc.*, --finance_step_1-- sc_sales_organization
         pnl.* exclude (
             material_id,
             calendar_year,
-            calendar_month
+            calendar_month,
+            sales_organization
         ),
+        pnl.sales_organization as pnl_sales_organization,
         pnl.material_id as pnl_material_id,
         ps.plant_units,
         ps.sku_units,
@@ -433,9 +442,10 @@ finance_step_2 as (
         and sc.cos_vol_posting_month = ps.posting_month
         and equal_null(
             sc.sc_sales_organization,
-            ps.sales_organization
+            pnl.sales_organization
         )
 ),
+-- select * from finance_step_2;,
 abc_classification as (
     select
         distinct material as material_id,
@@ -487,7 +497,7 @@ final_base as (
         sc.gross_weight,
         sc.net_weight,
         sc.weight_unit,
-        sc.sales_org_life_stage,
+        sc.sales_org_life_stage as life_stage,
         sc.city,
         sc.company,
         sc.company_desc,
@@ -571,7 +581,7 @@ final_base as (
         coalesce(sc.cos_vol_posting_month, sc.pnl_posting_month) as posting_month,
         coalesce(
             sc.sc_sales_organization,
-            sc.sales_organization
+            sc.pnl_sales_organization
         ) as sales_org
     from
         finance_step_2 as sc
@@ -585,7 +595,7 @@ final_base as (
             upper(
                 coalesce(
                     sc.sc_sales_organization,
-                    sc.sales_organization
+                     sc.pnl_sales_organization
                 )
             )
         ) = trim(upper(abc.abc_sales_organization))
@@ -604,7 +614,7 @@ final as (
         total_tons_without_tb_n_id,
         classifier,
         total_qty_classifier,
-        material_name,
+        material_description,
         product_hierarchy,
         product_category,
         product_category_description,
@@ -621,7 +631,6 @@ final as (
         sap_system,
         global_material_id,
         material_description,
-        material_master_type,
         material_group,
         division,
         material_type_description,
@@ -633,11 +642,11 @@ final as (
         sales_org,
         city,
         company,
-        company_description,
+        company_desc,
         country,
         plant_classification,
-        plant_description,
-        bom_level,
+        plant_desc,
+        bom_lvl as bom_level,
         bom_item_number,
         bom_parent_product_number,
         bom_child_product_number,
